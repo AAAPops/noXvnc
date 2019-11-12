@@ -12,7 +12,7 @@ int kbd_fd;
 int mouse_fd;
 int fb_fd;
 
-z_stream infstream;
+z_stream zStream;
 
 
 struct prog_arguments {

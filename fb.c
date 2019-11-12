@@ -1,6 +1,7 @@
 #define pr_fmt(fmt) "  _" fmt
-#define DEBUG_FB 0
-#define DEBUG_FB1 1
+#define DEBUG_FB    0
+#define DEBUG_FB127 1
+#define DEBUG_FB255 0
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -162,9 +163,32 @@ int fb_update_tight(char *rect_ptr,
         }
     }
 
-    debug_cond(DEBUG_FB, "Output backFB \n");
-    mem2hex(DEBUG_FB, backFB.ptr, 30, 50);
+    debug_cond(DEBUG_FB, "Output backFB:"); mem2hex(DEBUG_FB, backFB.ptr, 30, 50);
 }
+
+
+int fb_update_tight_fill(char *rect_ptr,  uint16_t x_start, uint16_t y_start, uint16_t x_res, uint16_t y_res)
+{
+    if (DEBUG_FB127) printf("-----\n%s() \n", __func__);
+    debug_cond(DEBUG_FB127, "Input Rect: X=%d, Y=%d, %dx%d \n", x_start, y_start, x_res, y_res);
+
+    uint32_t fill_pixel = mix_pixel_color(
+            *(unsigned char*)(rect_ptr + 1),
+            *(unsigned char*)(rect_ptr + 2),
+            *(unsigned char*)(rect_ptr + 3));
+    debug_cond(DEBUG_FB127, "Fill rect by pixel: 0x%08x \n", fill_pixel);
+
+
+    int x, y;
+    for (y = 0; y < y_res; y++) {
+        for (x = 0; x < x_res; x++) {
+
+            long location = (y_start + y) * fixinfo.line_length + (x_start + x) * 4;
+            *((uint32_t *)(backFB.ptr + location)) = fill_pixel;
+        }
+    }
+}
+
 
 
 int fb_mem2video(void) {

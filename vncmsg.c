@@ -223,28 +223,9 @@ int msg_framebufferupdate(int sock_fd) {
 
         case Tight: {
             decoder_tight( num_of_rect, pixel_buff, sizeof(pixel_buff), rectInfo);
+            //decoder_tight( num_of_rect, pixel_buff, sizeof(pixel_buff));
             if (DEBUG_VNCMSG128) printf("%s() \n", __FUNCTION__);
 
-            size_t pixel_buff_offset = 0;
-            uint16_t iter;
-            for( iter = 0; iter < num_of_rect; iter++ ) {
-                {
-                    debug_cond(DEBUG_VNCMSG, "---\n");
-                    debug_cond(DEBUG_VNCMSG, "Rect# %d, Xpos=%d  Ypos=%d, %dx%d, EncodeType: %d \n",
-                               iter, rectInfo[iter].x_start, rectInfo[iter].y_start,
-                               rectInfo[iter].x_res, rectInfo[iter].y_res,
-                               rectInfo[iter].encode_type);
-                    debug_cond(DEBUG_VNCMSG, "Raw Data Len: %dl \n", rectInfo[iter].raw_data_len);
-                }
-
-                fb_update_tight(pixel_buff + pixel_buff_offset,
-                              rectInfo[iter].x_start, rectInfo[iter].y_start,
-                              rectInfo[iter].x_res, rectInfo[iter].y_res);
-
-                pixel_buff_offset += rectInfo[iter].raw_data_len;
-            }
-            
-            
         }   break;
 
         case RRE:
@@ -254,7 +235,7 @@ int msg_framebufferupdate(int sock_fd) {
         case cursorPseudoEnc:
         case desctopSizePseudoEnc:
         default:
-            fprintf(stderr, "This Encode type (0x%x) not implemented yet!!! \n", encode_type);
+            fprintf(stderr, "This Encode type (%d) not implemented yet!!! \n", encode_type);
             exit(-1);
         break;
     }
