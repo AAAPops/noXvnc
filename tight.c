@@ -16,10 +16,21 @@
 #include "vncmsg.h"
 #include "fb.h"
 
-#define Z_BUFF_SIZE     1024 * 100  // I think that 100KB should be enough
+#define Z_BUFF_SIZE     1024 * 100  // I think that 100KB should be enough for everything -)))
 char z_buff[Z_BUFF_SIZE] = {'\0'};
 
+enum {
+    COPY_FILTER         = 0,
+    PALETTE_FILTER      = 1,
+    GRADIENT_FILTER     = 2,
+    FILL_COMPRESSION    = 8,
+    JPEG_COMPRESSION    = 9
+};
+
+
 ssize_t z_decompress(char* pixel_buff_p, size_t  pix_buff_len, char* z_buff_p, size_t z_data_len);
+
+size_t jpeg_zlib_data_len(void);
 
 
 // 7.6.7   Tight Encoding
@@ -28,13 +39,14 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
     if (DEBUG_TIGHT) printf("%s() \n", __FUNCTION__);
 
     char rect_hdr[12];
-    char tight_hdr[5];
+    //char tight_hdr[5];
+    uint8_t compression_control;
     uint8_t reset_stream[4] = {0};
     uint16_t iter;
 
 
     for( iter = 0; iter < num_of_rect; iter++ ) {
-    //for( iter = 0; iter < 3; iter++ ) {
+    //for( iter = 0; iter < 2; iter++ ) {
         printf(".....iter = %d \n", iter);
 
         ssize_t nbytes_recv = stream_getN_bytes(rect_hdr, 12, 0);
@@ -59,43 +71,39 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
 
 
 
-        nbytes_recv = stream_getN_bytes(tight_hdr, 5, MSG_PEEK); // Dry read 5 bytes from queue
+        nbytes_recv = stream_getN_bytes((char*)&compression_control, 1, 0);
         if (nbytes_recv < 0) {
             perror("stream_getN_bytes()");
             return -1;
         }
-        {
-            debug_cond(DEBUG_TIGHT, "Tight header:");
-            mem2hex(DEBUG_TIGHT, tight_hdr, 5, 16);
-        }
+        debug_cond(DEBUG_TIGHT, "Tight header:"); mem2hex(DEBUG_TIGHT, (char*)&compression_control, 1, 10);
 
-        uint8_t compress_control = *(tight_hdr + 0);
 
         for ( uint8_t iter2 = 0; iter2 < 4; iter2++) {
-            if (BIT_CHECK(compress_control, iter2)) {
+            if (BIT_CHECK(compression_control, iter2)) {
                 reset_stream[iter2] = 1;
                 debug_cond(DEBUG_TIGHT255, "Reset stream %d = %d \n", iter2, reset_stream[iter2]);
             }
         }
 
 
-        if( BIT_CHECK(compress_control, 7u) == 1 ) {
+        if( BIT_CHECK(compression_control, 7u) == 1 ) {
 
             //---------  FillCompression  ---------//
-            if( (compress_control >> 4) == 8 ) {
+            if( (compression_control >> 4u) == 8 ) {
                 debug_cond(DEBUG_TIGHT, "FillCompression \n");
 
-                nbytes_recv = stream_getN_bytes(pixel_buff, 4, 0); // 1 compession-control + 3 fill compression
+                nbytes_recv = stream_getN_bytes(pixel_buff, 3, 0);
                 if (nbytes_recv < 0) {
                     perror("stream_getN_bytes()");
                     return -1;
                 }
 
                 debug_cond(DEBUG_TIGHT, "fill by pixel:");  mem2hex(DEBUG_TIGHT, pixel_buff, 4, 30);
-                fb_update_tight_fill(pixel_buff,  x_start,  y_start,  x_res,  y_res);
+                fb_update_tight_fillcompression(pixel_buff,  x_start,  y_start,  x_res,  y_res);
 
                 //---------  JpegCompression  ---------//
-            } else if( (compress_control >> 4) == 9 ) {
+            } else if( (compression_control >> 4u) == 9 ) {
                 printf(".....JpegCompression not implemented yet!!! \n");
                 exit(-1);
 
@@ -108,76 +116,75 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
 
 
         //---------  BasicCompression ---------//
-        if( BIT_CHECK(compress_control, 7u) == 0 ) {
-            debug_cond(DEBUG_TIGHT, "BasicCompression \n");
+        if( BIT_CHECK(compression_control, 7u) == 0 ) {
+            debug_cond(DEBUG_TIGHT, "BasicCompression...\n");
 
-            // Find out 'read-filter-id' value
-            uint8_t read_filter_id = 0;
-            if (BIT_CHECK(compress_control, 6u))
-                read_filter_id = 1;
-            debug_cond(DEBUG_TIGHT, "read_filter_id = %d \n", read_filter_id);
+            // Find out 'filter-id' value
+            uint8_t filter_id = 0;
+            if (BIT_CHECK(compression_control, 6u)) {
+                nbytes_recv = stream_getN_bytes((char *) &filter_id, 1, 0);
+                if (nbytes_recv < 0) {
+                    perror("stream_getN_bytes()");
+                    return -1;
+                }
+            }
+            debug_cond(DEBUG_TIGHT, "filter_id = %d \n", filter_id);
 
             // Find out 'Use stream' value
-            BIT_CLEAR(compress_control, 6u);
-            uint8_t use_stream = compress_control >> 4u;
+            BIT_CLEAR(compression_control, 6u);
+            uint8_t use_stream = compression_control >> 4u;
             debug_cond(DEBUG_TIGHT255, "use_stream = %d \n", use_stream);
 
-            // *** Calculate zip compressed data length***
-            // 1 byte  example:
-            //*(msg + 1) = 0x4A; // => 74
-            // 2 bytes example:
-            //*(msg + 1) = 0x90; *(msg + 2) = 0x4e; // => 10.000
-            //*(msg + 1) = 0xde; *(msg + 2) = 0x42; // => 8.542
-            //*(msg + 1) = 0xcf; *(msg + 2) = 0x39; // => 7.375
-            // 3 bytes example:
-            //*(msg + 1) = 0x90; *(msg + 2) = 0x8b; *(msg + 3) = 0xc1; // => 3.163.536
 
-            unsigned char *len_ptr = (unsigned char*)(tight_hdr + 1 + read_filter_id);
-            uint32_t z_data_len = 0;
-            uint8_t z_len_123_bytes;
+            switch( filter_id ) {
+                case COPY_FILTER: {
+                    debug_cond(DEBUG_TIGHT, "CopyFilter... \n");
 
-            if ((BIT_CHECK(*(len_ptr), 7u) == 1) && (BIT_CHECK(*(len_ptr + 1), 7u) == 1)) {
-                debug_cond(DEBUG_TIGHT, "Length represent as 3 bytes \n");
-                BIT_CLEAR(*(len_ptr), 7u);
-                BIT_CLEAR(*(len_ptr + 1), 7u);
-                z_len_123_bytes = 3;
-                z_data_len = (*(len_ptr + 2) << 14u) | (*(len_ptr + 1) << 7u) | *(len_ptr);
+                    size_t z_data_len = jpeg_zlib_data_len();
+                    debug_cond(DEBUG_TIGHT, "z_data_len = %ld \n", z_data_len);
 
-            } else if ((BIT_CHECK(*(len_ptr), 7u) == 1) && (BIT_CHECK(*(len_ptr + 1), 7u) == 0)) {
-                debug_cond(DEBUG_TIGHT, "Length represent as 2 bytes \n");
-                BIT_CLEAR(*(len_ptr), 7u);
-                z_len_123_bytes = 2;
-                z_data_len = (*(len_ptr + 1) << 7u) | *(len_ptr);
+                    // Read Z data
+                    nbytes_recv = stream_getN_bytes(z_buff, z_data_len, 0);
+                    if (nbytes_recv < 0) {
+                        perror("stream_getN_bytes()");
+                        return -1;
+                    }
+                    debug_cond(DEBUG_TIGHT, "z_data:");
+                    mem2hex(DEBUG_TIGHT, z_buff, 15, 30);
 
-            } else {
-                debug_cond(DEBUG_TIGHT, "Length represent as 1 byte \n");
-                z_len_123_bytes = 1;
-                z_data_len = *(len_ptr);
+                    size_t uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size, z_buff, z_data_len);
+                    debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %d \n", uncompress_data_len);
+
+                    fb_update_tight_copyfilter(pixel_buff, x_start, y_start, x_res, y_res);
+
+                    break;
+                }
+
+                case PALETTE_FILTER: {
+                    debug_cond(DEBUG_TIGHT, "PaletteFilter... \n");
+
+                    debug_cond(DEBUG_TIGHT, "Not implemented yet... \n");
+                    //exit( -1 );
+                    return STATUS_OK;
+                    break;
+                }
+
+                case GRADIENT_FILTER: {
+                    debug_cond(DEBUG_TIGHT, "GradientFilter... \n");
+
+                    debug_cond(DEBUG_TIGHT, "Not implemented yet... \n");
+                    exit( -1 );
+                    break;
+                }
+
+                default: {
+                    debug_cond(DEBUG_TIGHT, "Unknown Filter... \n");
+                    debug_cond(DEBUG_TIGHT, "Will never implemented! \n");
+                    exit( -1 );
+                }
             }
-
-            // Actual read Tight header to '/dev/null'
-            debug_cond(DEBUG_TIGHT, "Skip first %d bytes \n", 1 + read_filter_id + z_len_123_bytes);
-            nbytes_recv = stream_getN_bytes(tight_hdr, 1 + read_filter_id + z_len_123_bytes, 0);
-            if (nbytes_recv < 0) {
-                perror("stream_getN_bytes()");
-                return -1;
-            }
-
-
-            // Read Z data
-            debug_cond(DEBUG_TIGHT, "z_data_len = %d \n", z_data_len);
-            nbytes_recv = stream_getN_bytes(z_buff, z_data_len, 0);
-            if (nbytes_recv < 0) {
-                perror("stream_getN_bytes()");
-                return -1;
-            }
-            debug_cond(DEBUG_TIGHT, "z_data:"); mem2hex(DEBUG_TIGHT, z_buff, 15, 30);
-
-            size_t uncompress_data_len = z_decompress(pixel_buff,  pixel_buff_size,  z_buff,  z_data_len);
-            debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %d \n", uncompress_data_len);
-
-            fb_update_tight(pixel_buff,  x_start,  y_start,  x_res,  y_res);
         }
+
     }
 
 
@@ -216,3 +223,60 @@ ssize_t z_decompress(char* pixel_buff_p, size_t  pix_buff_len, char* z_buff_p, s
 
     return pixel_buff_offset;
 }
+
+
+size_t jpeg_zlib_data_len(void)
+{
+    if (DEBUG_TIGHT) printf("%s() \n", __FUNCTION__);
+
+    uint8_t len_arr[3] = {'\0'};
+    int nbytes_recv;
+    size_t z_data_len = 0;
+    uint8_t z_len_123_bytes = 0;
+
+    nbytes_recv = stream_getN_bytes((char*)len_arr, 3, MSG_PEEK);
+    if (nbytes_recv < 0) {
+        perror("stream_getN_bytes()");
+        return -1;
+    }
+
+    // *** Calculate compressed data length***
+    // 1 byte  example:
+    // len_arr[0] = 0x4A; ===> 74
+    // 2 bytes example:
+    // len_arr[0] = 0x90; len_arr[1] = 0x4e;    ===> 10.000
+    // len_arr[0] = 0xde; len_arr[1] = 0x42;    ===> 8.542
+    // len_arr[0] = 0xcf; len_arr[1] = 0x39;    ===> 7.375
+    // 3 bytes example:
+    // len_arr[0] = 0x90; len_arr[1] = 0x8b; len_arr[2] = 0xc1; ===> 3.163.536
+
+
+    if ((BIT_CHECK(len_arr[0], 7u) == 1) && (BIT_CHECK(len_arr[1], 7u) == 1)) {
+        debug_cond(DEBUG_TIGHT, "Length represent as 3 bytes \n");
+        BIT_CLEAR(len_arr[0], 7u);
+        BIT_CLEAR(len_arr[1], 7u);
+        z_len_123_bytes = 3;
+        z_data_len = (len_arr[2] << 14u) | (len_arr[1] << 7u) | len_arr[0];
+
+    } else if ((BIT_CHECK(len_arr[0], 7u) == 1) && (BIT_CHECK(len_arr[1], 7u) == 0)) {
+        debug_cond(DEBUG_TIGHT, "Length represent as 2 bytes \n");
+        BIT_CLEAR(len_arr[0], 7u);
+        z_len_123_bytes = 2;
+        z_data_len = (len_arr[1] << 7u) | len_arr[0];
+
+    } else {
+        debug_cond(DEBUG_TIGHT, "Length represent as 1 byte \n");
+        z_len_123_bytes = 1;
+        z_data_len = len_arr[0];
+    }
+
+    // Actual read N bytes to /dev/null
+    nbytes_recv = stream_getN_bytes((char*)len_arr, z_len_123_bytes, 0);
+    if (nbytes_recv < 0) {
+        perror("stream_getN_bytes()");
+        return -1;
+    }
+
+    return z_data_len;
+}
+

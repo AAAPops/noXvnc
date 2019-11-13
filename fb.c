@@ -139,7 +139,7 @@ int fb_update_copyrect(uint16_t src_x_pos, uint16_t src_y_pos,
 }
 
 
-int fb_update_tight(char *rect_ptr,
+int fb_update_tight_copyfilter(char *rect_ptr,
                      uint16_t x_start, uint16_t y_start, uint16_t x_res, uint16_t y_res) {
     if (DEBUG_FB) printf("-----\n%s() \n", __func__);
     {
@@ -167,15 +167,15 @@ int fb_update_tight(char *rect_ptr,
 }
 
 
-int fb_update_tight_fill(char *rect_ptr,  uint16_t x_start, uint16_t y_start, uint16_t x_res, uint16_t y_res)
+int fb_update_tight_fillcompression(char *rect_ptr,  uint16_t x_start, uint16_t y_start, uint16_t x_res, uint16_t y_res)
 {
     if (DEBUG_FB127) printf("-----\n%s() \n", __func__);
     debug_cond(DEBUG_FB127, "Input Rect: X=%d, Y=%d, %dx%d \n", x_start, y_start, x_res, y_res);
 
     uint32_t fill_pixel = mix_pixel_color(
+            *(unsigned char*)(rect_ptr + 0),
             *(unsigned char*)(rect_ptr + 1),
-            *(unsigned char*)(rect_ptr + 2),
-            *(unsigned char*)(rect_ptr + 3));
+            *(unsigned char*)(rect_ptr + 2));
     debug_cond(DEBUG_FB127, "Fill rect by pixel: 0x%08x \n", fill_pixel);
 
 

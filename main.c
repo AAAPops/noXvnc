@@ -120,8 +120,8 @@ int vnc_main_loop(struct mouse_t *mouse_ptr) {
 
 
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
-    for(;;) {
-    //for( uint8_t iter = 0; iter < 1; iter++ ) {
+    //for(;;) {
+    for( uint8_t iter = 0; iter < 1; iter++ ) {
         tv.tv_sec = 0;       // ?????
         tv.tv_usec = 200000; // ~60 FramebufferUpdateRequest for 1 sec.
 
