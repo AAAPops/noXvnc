@@ -75,11 +75,18 @@ int main(int argc, char *argv[])
     stream_init_srv(progArgs.server, progArgs.port);
 
 
+    /*
+     *  Init 4 Z-streams
+     */
     if( progArgs.encodeTight == 1 ) {
-        int result = inflateInit(&zStream);
-        if (result != Z_OK) {
-            fprintf(stderr, "inflateInit(...) failed!\n");
-            exit(-1);
+        int result, iter;
+
+        for( iter = 0; iter < 4; iter++) {
+            result = inflateInit(&zStream[iter]);
+            if (result != Z_OK) {
+                fprintf(stderr, "inflateInit(%d) failed! \n", iter);
+                exit(-1);
+            }
         }
     }
 
@@ -120,8 +127,8 @@ int vnc_main_loop(struct mouse_t *mouse_ptr) {
 
 
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
-    //for(;;) {
-    for( uint8_t iter = 0; iter < 1; iter++ ) {
+    for(;;) {
+    //for( uint8_t iter = 0; iter < 1; iter++ ) {
         tv.tv_sec = 0;       // ?????
         tv.tv_usec = 200000; // ~60 FramebufferUpdateRequest for 1 sec.
 

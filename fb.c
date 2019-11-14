@@ -190,6 +190,39 @@ int fb_update_tight_fillcompression(char *rect_ptr,  uint16_t x_start, uint16_t 
 }
 
 
+int fb_update_tight_palette(char *rect_ptr,
+                               uint16_t x_start, uint16_t y_start, uint16_t x_res, uint16_t y_res,
+                               uint8_t palette_arr[256*3])
+{
+    if (DEBUG_FB127) printf("-----\n%s() \n", __func__);
+    {
+        debug_cond(DEBUG_FB127, "Input Rect: X=%d, Y=%d, %dx%d \n", x_start, y_start, x_res, y_res);
+
+        debug_cond(DEBUG_FB127, "Palette array (first 5 colors):");
+        mem2hex(DEBUG_FB127, (char*)palette_arr, 15, 15);
+    }
+
+    int x, y;
+    for (y = 0; y < y_res; y++) {
+        for (x = 0; x < x_res; x++) {
+
+            long location = (y_start + y) * fixinfo.line_length + (x_start + x) * 4;
+
+            uint_fast16_t indexed_color = *(unsigned char*)rect_ptr;
+
+            *((uint32_t *)(backFB.ptr + location)) = mix_pixel_color(
+                    palette_arr[3 * indexed_color + 0],
+                    palette_arr[3 * indexed_color + 1],
+                    palette_arr[3 * indexed_color + 2]);
+
+            rect_ptr++;
+        }
+    }
+
+    debug_cond(DEBUG_FB127, "Output backFB:"); mem2hex(DEBUG_FB, backFB.ptr, 30, 50);
+}
+
+
 
 int fb_mem2video(void) {
     if (DEBUG_FB) printf("-----\n%s() \n", __func__);
