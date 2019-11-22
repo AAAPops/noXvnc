@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
         progArgs.encodeCopyRect = 0;
         progArgs.encodeTight = 1;
         strcpy(progArgs.fb_name, "/dev/fb0");
-        strcpy(progArgs.mouse_name, "/dev/input/event5");
+        strcpy(progArgs.mouse_name, "/dev/input/event6");
         progArgs.sharedflag = 0;
     }
 

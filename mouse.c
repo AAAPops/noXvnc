@@ -25,8 +25,6 @@
 #include "mouse.h"
 
 
-
-
 enum {
     MAX_WIDTH  = 1024,
     MAX_HEIGHT = 768,

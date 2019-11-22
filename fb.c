@@ -1,6 +1,6 @@
 #define pr_fmt(fmt) "  _" fmt
 #define DEBUG_FB    0
-#define DEBUG_FB127 1
+#define DEBUG_FB127 0
 #define DEBUG_FB255 0
 
 #include <stdio.h>
@@ -208,7 +208,7 @@ int fb_update_tight_palette(char *rect_ptr,
 
             long location = (y_start + y) * fixinfo.line_length + (x_start + x) * 4;
 
-            uint_fast16_t indexed_color = *(unsigned char*)rect_ptr;
+            uint16_t indexed_color = *(unsigned char*)rect_ptr;
 
             *((uint32_t *)(backFB.ptr + location)) = mix_pixel_color(
                     palette_arr[3 * indexed_color + 0],
@@ -219,9 +219,51 @@ int fb_update_tight_palette(char *rect_ptr,
         }
     }
 
-    debug_cond(DEBUG_FB127, "Output backFB:"); mem2hex(DEBUG_FB, backFB.ptr, 30, 50);
+    debug_cond(DEBUG_FB127, "Output backFB: \n"); mem2hex(DEBUG_FB, backFB.ptr, 30, 50);
 }
 
+
+int fb_update_tight_palette_1_bit(char *rect_ptr,
+                            uint16_t x_start, uint16_t y_start, uint16_t x_res, uint16_t y_res,
+                            uint8_t palette_arr[256*3])
+{
+    if (DEBUG_FB127) printf("-----\n%s() \n", __func__);
+    {
+        debug_cond(DEBUG_FB127, "Input Rect: X=%d, Y=%d, %dx%d \n", x_start, y_start, x_res, y_res);
+
+        debug_cond(DEBUG_FB127, "Palette array (two colors):");
+        mem2hex(DEBUG_FB127, (char*)palette_arr, 6, 15);
+    }
+
+    uint32_t color_0 = mix_pixel_color( palette_arr[0], palette_arr[1], palette_arr[2]);
+    uint32_t color_1 = mix_pixel_color( palette_arr[3], palette_arr[4], palette_arr[5]);
+
+    int shift = 0;
+    int x, y;
+    for (y = 0; y < y_res; y++) {
+        for (x = 0; x < x_res; x++)
+        {
+            long location = (y_start + y) * fixinfo.line_length + (x_start + x) * 4;
+
+            if( (x != 0) && ((x % 8) == 0) )
+                shift++;
+
+            if( BIT_CHECK( *(rect_ptr + shift), x % 8) == 0 )
+                *((uint32_t *)(backFB.ptr + location)) = color_0;
+            else
+                *((uint32_t *)(backFB.ptr + location)) = color_1;
+
+            debug_cond(DEBUG_FB127, "  %dx%d,\t shift: %d,  bit-N: %d \n",  x, y,  shift, x%8);
+
+            rect_ptr++;
+        }
+
+        printf("------- x = %d \n",x);
+        shift++;
+    }
+
+    return STATUS_OK;
+}
 
 
 int fb_mem2video(void) {

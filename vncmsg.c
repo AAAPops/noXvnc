@@ -1,6 +1,6 @@
 #define pr_fmt(fmt) "  _" fmt
 #define DEBUG_VNCMSG     0
-#define DEBUG_VNCMSG128  1
+#define DEBUG_VNCMSG128  0
 #define DEBUG_VNCMSG256  0
 
 #include <stdio.h>
@@ -284,7 +284,7 @@ int msg_srv_get(int sock_fd) {
 
         default:
             fprintf(stderr, "Server's message type [%d] unknown \n", msg_type);
-            exit -1;
+            exit(-1);
             break;
     }
 

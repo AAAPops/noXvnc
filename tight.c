@@ -1,7 +1,7 @@
 #define pr_fmt(fmt) "  _" fmt
 #define DEBUG_TIGHT  1
-#define DEBUG_TIGHT128  0
-#define DEBUG_TIGHT255  1
+#define DEBUG_TIGHT128  1
+#define DEBUG_TIGHT255  0
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,10 +16,9 @@
 #include "vncmsg.h"
 #include "fb.h"
 
-#define TMP_BUFF_SIZE   100
 
-#define Z_BUFF_SIZE     1024 * 1000  // I think that 100KB should be enough for everything -)))
-char z_buff[Z_BUFF_SIZE] = {'\0'};
+#define VNC_DATA_SIZE     1024 * 1000  // I think that 100KB should be enough for everything -)))
+char vncdata_buff[VNC_DATA_SIZE] = {'\0'};
 
 enum {
     COPY_FILTER         = 0,
@@ -29,20 +28,12 @@ enum {
     JPEG_COMPRESSION    = 9
 };
 
-struct _palette {
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-};
-uint8_t palette_arr[256 * 3] = {'\0'};
-
+int find_next_rectangle(void);
 
 ssize_t z_decompress(char* pixel_buff_p, size_t  pix_buff_len, char* z_buff_p, size_t z_data_len, uint8_t streamN);
 
 size_t jpeg_zlib_data_len(void);
 
-
-int iter3 = 0;
 
 // 7.6.7   Tight Encoding
 int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_size)
@@ -54,6 +45,8 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
     uint8_t compression_control;
     uint8_t reset_stream[4] = {0};
     uint16_t iter;
+
+    uint8_t palette_arr[256 * 3] = {'\0'};
 
 
     for( iter = 0; iter < num_of_rect; iter++ ) {
@@ -76,14 +69,12 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
             //debug_cond(DEBUG_TIGHT, "---\n");
             debug_cond(DEBUG_TIGHT, "Rect# %d, Xpos=%d  Ypos=%d, %dx%d, EncodeType: %d \n",
                        iter, x_start, y_start, x_res, y_res, encode_type);
-            debug_cond(DEBUG_TIGHT, "Raw Data Len: %d \n", tpixel_data_len);
+            debug_cond(DEBUG_TIGHT, "Raw Data Len ???: %d \n", tpixel_data_len);
             mem2hex(DEBUG_TIGHT255, rect_hdr, nbytes_recv, 16);
         }
 
-        //if( iter3 != 0 )
-        //    exit(-1);
-
-
+        if( (x_res > 1024) || (y_res > 768) )
+            exit(-1);
 
         nbytes_recv = stream_getN_bytes((char*)&compression_control, 1, 0);
         if (nbytes_recv < 0) {
@@ -157,21 +148,27 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
                 case COPY_FILTER: {
                     debug_cond(DEBUG_TIGHT, "CopyFilter... \n");
 
-                    size_t z_data_len = jpeg_zlib_data_len();
-                    debug_cond(DEBUG_TIGHT, "z_data_len = %ld \n", z_data_len);
+                    if( (x_res * y_res * 3) < 12 ) {
+                        find_next_rectangle();
+                        // Read T-PIXEL data
+                        nbytes_recv = stream_getN_bytes(vncdata_buff, x_res * y_res * 3, 0);
 
-                    // Read Z data
-                    nbytes_recv = stream_getN_bytes(z_buff, z_data_len, 0);
-                    if (nbytes_recv < 0) {
-                        perror("stream_getN_bytes()");
-                        return -1;
+                    } else {
+
+                        size_t z_data_len = jpeg_zlib_data_len();
+                        debug_cond(DEBUG_TIGHT, "z_data_len = %ld \n", z_data_len);
+
+                        // Read Z data
+                        nbytes_recv = stream_getN_bytes(vncdata_buff, z_data_len, 0);
+                        {
+                            debug_cond(DEBUG_TIGHT, "z_data:");
+                            mem2hex(DEBUG_TIGHT, vncdata_buff, 15, 30);
+                        }
+
+                        size_t uncompress_data_len;
+                        uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size, vncdata_buff, z_data_len, use_stream);
+                        debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %ld \n", uncompress_data_len);
                     }
-                    debug_cond(DEBUG_TIGHT, "z_data:");
-                    mem2hex(DEBUG_TIGHT, z_buff, 15, 30);
-
-                    size_t uncompress_data_len;
-                    uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size, z_buff, z_data_len, use_stream);
-                    debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %ld \n", uncompress_data_len);
 
                     fb_update_tight_copyfilter(pixel_buff, x_start, y_start, x_res, y_res);
 
@@ -183,129 +180,91 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
                     uint8_t palette_colors;
 
                     // Read number of palette colors
-                    nbytes_recv = stream_getN_bytes((char*)&palette_colors, 1, 0);
-                    if (nbytes_recv < 0) {
-                        perror("stream_getN_bytes()");
-                        return -1;
-                    }
-                    debug_cond(DEBUG_TIGHT, "Palette colors = %d \n", palette_colors + 1);
-
-                    if( (palette_colors + 1) == 2  ) {
-
-                        // Read Palette
-                        nbytes_recv = stream_getN_bytes((char*)palette_arr, 6 , 0);
-                        if (nbytes_recv < 0) {
-                            perror("stream_getN_bytes()");
-                            return -1;
-                        }
-                        {
-                            debug_cond(DEBUG_TIGHT255, "Palette array (2 colors):");
-                            mem2hex(DEBUG_TIGHT255, (char*)palette_arr, 6, 15);
-                        }
-
-
-
-                            uint8_t tmp_buff[TMP_BUFF_SIZE] = {'\0'};
-
-                            // Read 'TMP_BUFF_SIZE' bytes for analyze it
-                            nbytes_recv = stream_getN_bytes((char *) tmp_buff, TMP_BUFF_SIZE, MSG_PEEK);
-                            if (nbytes_recv < 0) {
-                                perror("stream_getN_bytes()");
-                                return -1;
-                            }
-
-                            //int iter3;
-                            for (iter3 = 0; iter3 < TMP_BUFF_SIZE; iter3++) {
-                                uint16_t x_start_1 = ntohs(*(uint16_t *) (tmp_buff + iter3 + 0));
-                                uint16_t y_start_1 = ntohs(*(uint16_t *) (tmp_buff + iter3 + 2));
-                                uint16_t x_res_1 = ntohs(*(uint16_t *) (tmp_buff + iter3 + 4));
-                                uint16_t y_res_1 = ntohs(*(uint16_t *) (tmp_buff + iter3 + 6));
-                                int encode_type_1 = ntohl(*(int32_t *) (tmp_buff + iter3 + 8));
-                                //uint32_t tpixel_data_len_1 = x_res * y_res * 3;
-
-                                if (encode_type_1 == 7) {
-                                    debug_cond(DEBUG_TIGHT, "   ---\n");
-                                    debug_cond(DEBUG_TIGHT, "   Shift #%d, Xpos=%d  Ypos=%d, %dx%d, EncodeType: %d \n",
-                                               iter3, x_start_1, y_start_1, x_res_1, y_res_1, encode_type_1);
-                                    //debug_cond(DEBUG_TIGHT, "Raw Data Len: %d \n", tpixel_data_len);
-                                    //mem2hex(DEBUG_TIGHT255, rect_hdr, nbytes_recv, 16);
-                                    break;
-                                }
-                            }
-
-
-                        size_t z_data_len = jpeg_zlib_data_len();
-                        debug_cond(DEBUG_TIGHT, "  z_data_len = %ld \n", z_data_len);
-
-                        if( z_data_len != 0 ) {
-                            // Read Z data
-                            nbytes_recv = stream_getN_bytes(z_buff, z_data_len, 0);
-                            if (nbytes_recv < 0) {
-                                perror("stream_getN_bytes()");
-                                return -1;
-                            }
-                            debug_cond(DEBUG_TIGHT, "z_data:");
-                            mem2hex(DEBUG_TIGHT, z_buff, 15, 30);
-
-                            size_t uncompress_data_len;
-                            uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size, z_buff, z_data_len,
-                                                               use_stream);
-                            debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %ld (x 3 = %ld ) \n",
-                                       uncompress_data_len, uncompress_data_len * 3);
-
-                        } else {
-                            uint16_t palette_data_len = x_res / 8;
-                            if( (x_res % 8) != 0 )
-                                palette_data_len++;
-                            palette_data_len *= y_res;
-                            debug_cond(DEBUG_TIGHT, "Palette_data len %d: \n", palette_data_len);
-
-                            // Read Palette data
-                            nbytes_recv = stream_getN_bytes(z_buff, palette_data_len, 0);
-                            if (nbytes_recv < 0) {
-                                perror("stream_getN_bytes()");
-                                return -1;
-                            }
-                            debug_cond(DEBUG_TIGHT, "Palette_data:");
-                            mem2hex(DEBUG_TIGHT, z_buff, palette_data_len, 30);
-                        }
-
-
-
-                        //exit(-1);
-                        continue;
+                    nbytes_recv = stream_getN_bytes((char *) &palette_colors, 1, 0);
+                    {
+                        debug_cond(DEBUG_TIGHT, "Palette colors = %d \n", palette_colors + 1);
                     }
 
                     // Read Palette
-                    nbytes_recv = stream_getN_bytes((char*)palette_arr, 3 * (palette_colors + 1) , 0);
-                    if (nbytes_recv < 0) {
-                        perror("stream_getN_bytes()");
-                        return -1;
-                    }
+                    memset(palette_arr, 0, 256*3);
+                    nbytes_recv = stream_getN_bytes((char *) palette_arr, 3 * (palette_colors + 1), 0);
                     {
                         debug_cond(DEBUG_TIGHT, "Palette array (first 5 colors):");
-                        mem2hex(DEBUG_TIGHT255, (char*)palette_arr, 15, 15);
+                        mem2hex(DEBUG_TIGHT255, (char *) palette_arr, 15, 15);
                     }
 
-                    size_t z_data_len = jpeg_zlib_data_len();
-                    debug_cond(DEBUG_TIGHT, "z_data_len = %ld \n", z_data_len);
+                    if ((palette_colors + 1) == 2) {
+                        debug_cond(DEBUG_TIGHT, ">>> 1 bit encoding \n");
 
-                    // Read Z data
-                    nbytes_recv = stream_getN_bytes(z_buff, z_data_len, 0);
-                    if (nbytes_recv < 0) {
-                        perror("stream_getN_bytes()");
-                        return -1;
+                        // Calculate filtered data len
+                        uint16_t palette_data_len = x_res / 8;
+                        if( (x_res % 8) != 0 )
+                            palette_data_len++;
+                        palette_data_len *= y_res;
+                        debug_cond(DEBUG_TIGHT, "Palette_data len %d: \n", palette_data_len);
+
+                        if( palette_data_len < 12 ) {
+                            // Handle uncompressed data < 12 bytes
+                            debug_cond(DEBUG_TIGHT, "     Handle uncompressed data\n");
+                            find_next_rectangle();
+
+                            // Read Palette data
+                            nbytes_recv = stream_getN_bytes(pixel_buff, palette_data_len, 0);
+                            {
+                                debug_cond(DEBUG_TIGHT, "Palette_data:");
+                                mem2hex(DEBUG_TIGHT, pixel_buff, palette_data_len, 30);
+                            }
+
+                        } else {
+                            // Handle compressed Z-data
+                            debug_cond(DEBUG_TIGHT, "     Handle compressed Z-data\n");
+
+                            size_t z_data_len = jpeg_zlib_data_len();
+                            debug_cond(DEBUG_TIGHT, "  z_data_len = %ld \n", z_data_len);
+
+                            // Read Z data
+                            nbytes_recv = stream_getN_bytes(vncdata_buff, z_data_len, 0);
+                            {
+                                debug_cond(DEBUG_TIGHT, "z_data:");
+                                mem2hex(DEBUG_TIGHT, vncdata_buff, 15, 30);
+                            }
+
+                            size_t uncompress_data_len;
+                            uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size,
+                                    vncdata_buff,  z_data_len,  use_stream);
+                            debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %ld (x 3 = %ld ) \n",
+                                       uncompress_data_len, uncompress_data_len * 3);
+
+                        }
+
+                        fb_update_tight_palette_1_bit(pixel_buff, x_start, y_start, x_res, y_res, palette_arr);
+
+                    } else {
+                        debug_cond(DEBUG_TIGHT, ">>> 8 bit encoding \n");
+
+                        // Remember that data length may be less than 12 bytes in '8 bit encoding' mode too
+
+                        size_t z_data_len = jpeg_zlib_data_len();
+                        debug_cond(DEBUG_TIGHT, "z_data_len = %ld \n", z_data_len);
+
+                        // Read Z data
+                        nbytes_recv = stream_getN_bytes(vncdata_buff, z_data_len, 0);
+                        {
+                            debug_cond(DEBUG_TIGHT, "z_data:");
+                            mem2hex(DEBUG_TIGHT, vncdata_buff, 15, 30);
+                        }
+
+                        size_t uncompress_data_len;
+                        uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size, vncdata_buff, z_data_len, use_stream);
+                        {
+                            debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %ld (x 3 = %ld ) \n",
+                                       uncompress_data_len, uncompress_data_len * 3);
+                        }
+                        fb_update_tight_palette(pixel_buff, x_start, y_start, x_res, y_res, palette_arr);
+
                     }
-                    debug_cond(DEBUG_TIGHT, "z_data:");
-                    mem2hex(DEBUG_TIGHT, z_buff, 15, 30);
 
-                    size_t uncompress_data_len;
-                    uncompress_data_len = z_decompress(pixel_buff, pixel_buff_size, z_buff, z_data_len, use_stream);
-                    debug_cond(DEBUG_TIGHT, "Uncompressed Z_Data = %ld (x 3 = %ld ) \n",
-                            uncompress_data_len, uncompress_data_len * 3);
-
-                    fb_update_tight_palette(pixel_buff, x_start, y_start, x_res, y_res,  palette_arr);
-
+                    //exit(-1);
                     break;
                 }
 
@@ -422,3 +381,27 @@ size_t jpeg_zlib_data_len(void)
     return z_data_len;
 }
 
+
+int find_next_rectangle(void) {
+    uint8_t tmp_buff[100] = {'\0'};
+
+    // Read 'TMP_BUFF_SIZE' bytes for analyze it
+    stream_getN_bytes((char *) tmp_buff, 100, MSG_PEEK);
+
+    int iter;
+    for (iter = 0; iter < 100; iter++) {
+        uint16_t x_start_1 = ntohs(*(uint16_t *) (tmp_buff + iter + 0));
+        uint16_t y_start_1 = ntohs(*(uint16_t *) (tmp_buff + iter + 2));
+        uint16_t x_res_1 = ntohs(*(uint16_t *) (tmp_buff + iter + 4));
+        uint16_t y_res_1 = ntohs(*(uint16_t *) (tmp_buff + iter + 6));
+        int encode_type_1 = ntohl(*(int32_t *) (tmp_buff + iter + 8));
+        //uint32_t tpixel_data_len_1 = x_res * y_res * 3;
+
+        if (encode_type_1 == 7) {
+            debug_cond(DEBUG_TIGHT, "   ---\n");
+            debug_cond(DEBUG_TIGHT, "   Shift #%d, Xpos=%d  Ypos=%d, %dx%d, EncodeType: %d \n",
+                       iter, x_start_1, y_start_1, x_res_1, y_res_1, encode_type_1);
+            break;
+        }
+    }
+}
