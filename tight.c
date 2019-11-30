@@ -1,6 +1,6 @@
 #define pr_fmt(fmt) "  _" fmt
-#define DEBUG_TIGHT  1
-#define DEBUG_TIGHT128  1
+#define DEBUG_TIGHT  0
+#define DEBUG_TIGHT128  0
 #define DEBUG_TIGHT255  0
 
 #include <stdio.h>
@@ -51,7 +51,7 @@ int decoder_tight(uint16_t num_of_rect, char *pixel_buff, uint32_t pixel_buff_si
 
     for( iter = 0; iter < num_of_rect; iter++ ) {
     //for( iter = 0; iter < 3; iter++ ) {
-        printf(".....iter = %d \n", iter);
+        debug_cond(DEBUG_TIGHT, ".....iter = %d \n", iter);
 
         ssize_t nbytes_recv = stream_getN_bytes(rect_hdr, 12, 0);
         if (nbytes_recv < 0) {

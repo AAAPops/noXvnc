@@ -21,7 +21,7 @@
 #include "mouse.h"
 
 
-int vnc_main_loop(struct mouse_t *mouse);
+int vnc_main_loop(int*);
 
 
 int main(int argc, char *argv[])
@@ -32,11 +32,10 @@ int main(int argc, char *argv[])
      *   Set Default Vars
      */
     {
-        progArgs.encodeRaw = 0;
+        progArgs.encodeRaw = 1;
         progArgs.encodeCopyRect = 0;
-        progArgs.encodeTight = 1;
+        progArgs.encodeTight = 0;
         strcpy(progArgs.fb_name, "/dev/fb0");
-        strcpy(progArgs.mouse_name, "/dev/input/event6");
         progArgs.sharedflag = 0;
     }
 
@@ -63,10 +62,15 @@ int main(int argc, char *argv[])
     fb_open_dev(progArgs.fb_name);
 
     /*
-     * Init Mouse device
+     * Init Mouse devices
      */
-    struct mouse_t mouse;
-    mouse_open_dev(progArgs.mouse_name, &mouse);
+    int mouse_fd[MAX_MOUSE_DEVS] = {0};
+    int mouse_fd_n = mouse_open_dev(mouse_fd);
+
+    for( int iter = 0; iter < mouse_fd_n; iter++ )
+        debug_cond(DEBUG_MAIN, "mouse device descriptor: %d \n", mouse_fd[iter] );
+    //struct mouse_t mouse;
+
 
 
     /*
@@ -99,7 +103,7 @@ int main(int argc, char *argv[])
 
 
     /*  Start the main VNC loop  */
-    vnc_main_loop(&mouse);
+    vnc_main_loop(mouse_fd);
 
 
     printf("\n--- The End ---\n");
@@ -107,7 +111,7 @@ int main(int argc, char *argv[])
 }
 
 
-int vnc_main_loop(struct mouse_t *mouse_ptr) {
+int vnc_main_loop(int *mouse_fd_arr) {
     if (DEBUG_MAIN) printf("-----\n%s() \n", __func__);
 
     int increment = 0;
@@ -137,20 +141,30 @@ int vnc_main_loop(struct mouse_t *mouse_ptr) {
 
         FD_ZERO(&readfds);
         FD_SET(srv_fd, &readfds);
-        FD_SET(mouse_fd, &readfds);
-
         if (srv_fd > max_fd)
             max_fd = srv_fd;
-        if (mouse_fd > max_fd)
-            max_fd = mouse_fd;
+
+        for( int iter = 0; iter < MAX_MOUSE_DEVS; iter++ ) {
+            if( mouse_fd_arr[iter] <= 0 )
+                break;
+
+            FD_SET(mouse_fd_arr[iter], &readfds);
+            if( mouse_fd_arr[iter] > max_fd )
+                max_fd = mouse_fd_arr[iter];
+        }
 
         if (select(max_fd + 1, &readfds, NULL, NULL, &tv) == -1) {
             perror("select()");
             continue;
         }
 
-        if( FD_ISSET(mouse_fd, &readfds) ) {
-            mouse_handle_event(&mouse_ptr);
+        for( int iter = 0; iter < MAX_MOUSE_DEVS; iter++ ) {
+            if( mouse_fd_arr[iter] <= 0 )
+                break;
+
+            if (FD_ISSET(mouse_fd_arr[iter], &readfds)) {
+                mouse_handle_event(mouse_fd_arr[iter]);
+            }
         }
 
         if( FD_ISSET(srv_fd, &readfds) ) {

@@ -7,9 +7,11 @@
 #define STATUS_NOK -1
 #define TIMEOUT     10
 
+#define MAX_MOUSE_DEVS  10
+
 int srv_fd;
 int kbd_fd;
-int mouse_fd;
+//int mouse_fd;
 int fb_fd;
 
 z_stream zStream[4];

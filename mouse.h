@@ -12,9 +12,9 @@ struct mouse_t {
 };
 
 
-int mouse_open_dev(char *mouse_name, struct mouse_t *mouse);
+int mouse_open_dev(int *fd_arr);
 
-int mouse_handle_event(struct mouse_t **mouse);
+int mouse_handle_event(int);
 
 #endif
 

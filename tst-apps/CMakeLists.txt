@@ -11,6 +11,8 @@ add_executable(fb-tests fb-tests.c)
 
 add_executable(linux_input  linux_input.c)
 
+add_executable(mouse  mouse.c)
+
 
 find_package(ZLIB)
 
