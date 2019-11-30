@@ -11,10 +11,17 @@ struct mouse_t {
     uint8_t button_mask;
 };
 
-
+/*
+ * Input:   array of 'int' to store mouse file descriptor
+ * Output:  number of found mouse devices
+ *          -1 if no one found
+ */
 int mouse_open_dev(int *fd_arr);
 
-int mouse_handle_event(int);
+/*
+ * Handle mouse event by mouse file descriptor
+ */
+void mouse_handle_event(int fd);
 
 #endif
 

@@ -59,7 +59,6 @@ int handshake_proto_ver() {
     /* Get protocol version from server */
     nbytes_read = stream_getN_bytes(srv_msg, sizeof(srv_msg), 0);
     {
-        printf("nbytes_read = %d \n", nbytes_read);
         debug_cond(DEBUG_HNDSHAKE, "Get 'Protocol Version':");
         mem2hex(DEBUG_HNDSHAKE, srv_msg, nbytes_read, 30);
     }

@@ -1,9 +1,8 @@
 #define pr_fmt(fmt) "  _" fmt
-#define DEBUG_MOUSE     1
+#define DEBUG_MOUSE     0
 #define DEBUG_MOUSE127  0
 
-#define _GNU_SOURCE /* for asprintf */
-#include <stdbool.h>
+#define _GNU_SOURCE     // for 'versionsort' support
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -38,6 +37,7 @@ enum {
 
 struct mouse_t mouse_event;
 
+
 /**
  * Filter for the AutoDevProbe scandir on /dev/input.
  *
@@ -51,6 +51,15 @@ static int is_event_device(const struct dirent *dir) {
 }
 
 
+
+/*
+ * Search 'event*' files in '/dev/input/' directory
+ * and test witch one is Mouse devices
+ *
+ * Output: array of strings with records:
+ * '/dev/input/event5'
+ * '/dev/input/event22'
+ */
 int find_mouse_dev(char *ev_name[], int ev_name_max)
 {
     if (DEBUG_MOUSE) printf("-----\n%s() \n", __func__);
@@ -71,8 +80,6 @@ int find_mouse_dev(char *ev_name[], int ev_name_max)
     for (iter = 0; iter < ndev; iter++) {
         char fname[64];
         int fd = -1;
-        char name[256] = {"\0"};
-        struct input_id device_info;
 
         snprintf(fname, sizeof(fname), "%s/%s", DEV_INPUT_EVENT, namelist[iter]->d_name);
         fd = open(fname, O_RDONLY);
@@ -85,8 +92,7 @@ int find_mouse_dev(char *ev_name[], int ev_name_max)
             retval = -1;
             goto out;
         }
-        //printf("   ev_type = 0x%x, ", ev_type);
-        //mem2hex(1, (char*)&ev_type, sizeof(ev_type), 32);
+
 
         if( BIT_CHECK(ev_type, EV_KEY) ) {
             memset(ev_code, 0, sizeof(ev_code));
@@ -97,8 +103,6 @@ int find_mouse_dev(char *ev_name[], int ev_name_max)
                 goto out;
             }
 
-            //mem2hex(1, (char*)ev_code, sizeof(ev_code), 32);
-            //printf("        evcode #34 = 0x%x \n", *(ev_code + 34) );
             // BTN_MOUSE = 0x110 == 272, so we have to check bit #272 (34 * 8 = 272)
             if( BIT_CHECK( *(ev_code + 34), 0) )
             {
@@ -116,7 +120,7 @@ int find_mouse_dev(char *ev_name[], int ev_name_max)
     }
 
 
-    out:
+out:
     for (iter = 0; iter < ndev; iter++)
         free(namelist[iter]);
     free(namelist);
@@ -126,7 +130,14 @@ int find_mouse_dev(char *ev_name[], int ev_name_max)
 
 
 
-/* mouse functions */
+/*
+ * Set file descriptors for mouse devices
+ * '/dev/input/event5'  ==> 4
+ * '/dev/input/event22' ==> 5
+ *
+ * Output: Number of mouse file descriptors
+ *
+ */
 int mouse_open_dev(int *fd_arr) {
     if (DEBUG_MOUSE) printf("-----\n%s() \n", __func__);
 
@@ -159,7 +170,7 @@ int mouse_open_dev(int *fd_arr) {
     free(strings);
 
 
-    mouse_event.current.x  = mouse_event.current.y  = 0;
+    mouse_event.current.x  = mouse_event.current.y  = 70;
     mouse_event.pressed.x  = mouse_event.pressed.y  = 0;
     mouse_event.released.x = mouse_event.released.y = 0;
     mouse_event.button_mask = 0;
@@ -222,31 +233,31 @@ void mouse_button(struct input_event *inevnt, struct mouse_t *mouse)
     if (inevnt->code == BTN_LEFT) {
         if (inevnt->value == VALUE_PRESSED) {
             mouse->pressed = mouse->current;
-            BIT_SET(mouse->button_mask, 0);
+            BIT_SET(mouse->button_mask, 0u);
         }
 
         if (inevnt->value == VALUE_RELEASED) {
             mouse->released = mouse->current;
-            BIT_CLEAR(mouse->button_mask, 0);
+            BIT_CLEAR(mouse->button_mask, 0u);
         }
     }
 
     if (inevnt->code == BTN_RIGHT) {
         if (inevnt->value == VALUE_PRESSED) {
             mouse->pressed = mouse->current;
-            BIT_SET(mouse->button_mask, 1);
+            BIT_SET(mouse->button_mask, 1u);
         }
 
         if (inevnt->value == VALUE_RELEASED) {
             mouse->released = mouse->current;
-            BIT_CLEAR(mouse->button_mask, 1);
+            BIT_CLEAR(mouse->button_mask, 1u);
         }
     }
 }
 
 
 
-int mouse_handle_event(int mouse_fd) {
+void mouse_handle_event(int mouse_fd) {
     if (DEBUG_MOUSE) printf("-----\n%s() \n", __func__);
 
     struct input_event in_evnt;
@@ -255,7 +266,6 @@ int mouse_handle_event(int mouse_fd) {
     struct timeval tv;
 
 
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
     int iter;
     for (iter = 0; iter < 25; iter++) {
         tv.tv_sec = 0;
@@ -270,14 +280,9 @@ int mouse_handle_event(int mouse_fd) {
             break;
         }
 
-        if( FD_ISSET(mouse_fd, &readfds) ) {
+        if( FD_ISSET(mouse_fd, &readfds) )
+        {
             read(mouse_fd, &in_evnt, sizeof(struct input_event));
-
-            if( DEBUG_MOUSE ) {
-                printf("\033[1;1H\033[2KMouse event: code: %d,  type: %d,  value: %d",
-                       in_evnt.code, in_evnt.type, in_evnt.value);
-            }
-
             mouse_send_pointerevent(&mouse_event);
 
             switch (in_evnt.type) {
@@ -299,6 +304,4 @@ int mouse_handle_event(int mouse_fd) {
         debug_cond(DEBUG_MOUSE, "Handle mouse events:  %d \n", iter);
         break;
     }
-#pragma clang diagnostic pop
-
 }

@@ -24,13 +24,13 @@
 int vnc_main_loop(int*);
 
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (DEBUG_MAIN) printf("-----\n%s() \n", __func__);
 
-    /*
-     *   Set Default Vars
-     */
+/*
+ * Set Default Vars
+ *
+ */
     {
         progArgs.encodeRaw = 1;
         progArgs.encodeCopyRect = 0;
@@ -39,9 +39,10 @@ int main(int argc, char *argv[])
         progArgs.sharedflag = 0;
     }
 
-    /*
-     *  Parsing program arguments
-     */
+/**
+ * Parsing program arguments
+ *
+ */
     {
         strcpy(progArgs.password, argv[1]);
 
@@ -55,33 +56,37 @@ int main(int argc, char *argv[])
         strncpy(progArgs.server, connect_to, delim_pos);
         progArgs.port = 5900 + strtol(connect_to + delim_pos + 1, NULL, 10);
 
-        debug_cond(DEBUG_MAIN, "Server %s:[%d] \n", progArgs.server, progArgs.port );
+        debug_cond(DEBUG_MAIN, "Server %s:[%d] \n", progArgs.server, progArgs.port);
     }
 
     /*  Init FrameBuffer device  */
     fb_open_dev(progArgs.fb_name);
 
-    /*
-     * Init Mouse devices
-     */
+
+
+/**
+ * Init Mouse devices
+ *
+*/
     int mouse_fd[MAX_MOUSE_DEVS] = {0};
     int mouse_fd_n = mouse_open_dev(mouse_fd);
+    fprintf(stderr, "  Found %d mouse(s) \n", mouse_fd_n);
 
-    for( int iter = 0; iter < mouse_fd_n; iter++ )
-        debug_cond(DEBUG_MAIN, "mouse device descriptor: %d \n", mouse_fd[iter] );
-    //struct mouse_t mouse;
+    for (int iter = 0; iter < mouse_fd_n; iter++)
+        debug_cond(DEBUG_MAIN, "mouse device descriptor: %d \n", mouse_fd[iter]);
 
 
-
-    /*
-     * Init VNC server
-     */
+/**
+ * Init VNC server
+ *
+ */
     stream_init_srv(progArgs.server, progArgs.port);
 
 
-    /*
-     *  Init 4 Z-streams
-     */
+/**
+ * Init 4 Z-streams
+ *
+ */
     if( progArgs.encodeTight == 1 ) {
         int result, iter;
 
@@ -95,14 +100,18 @@ int main(int argc, char *argv[])
     }
 
 
-    /*
-     * Handshake with VNC server
-     */
+/**
+ * Handshake with VNC server
+ *
+ */
     if( handshake_with_srv(srv_fd) < 0 )
         err_exit_2("handshake_with_srv");
 
 
-    /*  Start the main VNC loop  */
+/**
+ * Start the main VNC loop
+ *
+ */
     vnc_main_loop(mouse_fd);
 
 
@@ -111,6 +120,11 @@ int main(int argc, char *argv[])
 }
 
 
+
+/**
+ * VNC main Loop
+ *
+ */
 int vnc_main_loop(int *mouse_fd_arr) {
     if (DEBUG_MAIN) printf("-----\n%s() \n", __func__);
 
@@ -125,9 +139,6 @@ int vnc_main_loop(int *mouse_fd_arr) {
 
     if( msg_client_setencods(srv_fd) < 0 )
         err_exit();
-
-
-    //printf("srv_sock_fd = %d, mouse_fd = %d,  max_fd = %d \n", srv_sock_fd, mouse_fd, max_fd);
 
 
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
