@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
         char *connect_to = argv[argc - 1];
         char substr[] = ":";
         size_t delim_pos = strcspn(connect_to, substr);
-        if (delim_pos > 15) {
+        if( (delim_pos < 8) || (delim_pos > 15) ) {
             fprintf(stderr, "Server IP is wrong \n");
             return -1;
         }
@@ -59,7 +59,11 @@ int main(int argc, char *argv[]) {
         debug_cond(DEBUG_MAIN, "Server %s:[%d] \n", progArgs.server, progArgs.port);
     }
 
-    /*  Init FrameBuffer device  */
+
+/**
+ * Init FrameBuffer device
+ *
+ */
     fb_open_dev(progArgs.fb_name);
 
 

@@ -14,10 +14,6 @@
 #include "utils.h"
 #include "d3des.h"
 
-#define SHAREDFLAG 1
-
-/* Pointer to input message buffer */
-//char* input_buff_ptr;
 
 struct srv_init_data {
     uint16_t fb_x;

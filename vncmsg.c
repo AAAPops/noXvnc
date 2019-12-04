@@ -241,7 +241,7 @@ int msg_framebufferupdate(int sock_fd) {
     }
 
 
-    fb_mem2video();
+    backFB_to_frontFB();
     return 1;
 }
 

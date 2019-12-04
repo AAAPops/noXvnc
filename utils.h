@@ -7,4 +7,4 @@
 
 
 /** Convert line to hex  */
-void mem2hex(int cond, char *str, int len, int colum_counts);
+void mem2hex(int cond, unsigned char *str, int len, int colum_counts);
